@@ -1,8 +1,18 @@
+/*
+* Connect jumper to 3.3V and A0 port to start configuration mode.
+* 
+* In all modes connected 5V to D2 incriments the inner counter, to holding D13 for 2 sec clears the counter.
+* Inner counter value updating every 0.4 sec with a displaying function depending on mode.
+*/
+
 #include <EEPROM.h>
 #include <LiquidCrystal.h>
 
 LiquidCrystal lcd(7, 8, 10, 9, 12, 11);
+bool isNormal = false;
 int length = 0;
+int shiftSize = 0;
+float counter = 0.0;
 float vector[30];
 
 void setup() {
@@ -11,6 +21,9 @@ void setup() {
 
   if(analogRead(0) > 64)
   {
+    // Configuration mode
+    isNormal = false;
+
     Serial.begin(9600);
     Serial.print("Segment: ");
     Serial.println(printMarkedInt(length));
@@ -42,22 +55,46 @@ void setup() {
         break;
       }
     }
+  } else
+  {
+    // Normal mode
+
+    isNormal = true;
+
+    lcd.begin(20, 4);
+    lcd.print("Hello!");
   }
+   
+
 
   FillVectorOnLength();  
 
+  pinMode(2 , INPUT);
+  pinMode(13 , INPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-  
-  lcd.begin(20, 4);
-  lcd.print("Hello!");
+
+  attachInterrupt(0, INT0_Encoder, RISING);
 
 }
 
 void loop() {
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(500);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(500);
+  if (isNormal == false)
+  {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(195);
+
+    counter += vector[shiftSize];
+    shiftSize = 0;
+    Serial.print(counter);
+    Serial.println(' ');
+  }
+}
+
+void INT0_Encoder()
+{
+    shiftSize++;
 }
 
 String printMarkedInt(int toPrint)
@@ -93,13 +130,12 @@ String printMarkedInt(int toPrint)
 void FillVectorOnLength()
 {
   vector[0] = 0;
-  float buffer = 0;
 
   for(int i=1; i<30 ; i++)
   {
     vector[i] = (vector[i-1]*1000 + length)/1000;
   }
-  
+
   /* for testing
 
   for(int i=0; i<30 ; i++)
