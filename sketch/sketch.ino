@@ -1,19 +1,20 @@
 /*
 * Connect jumper to 3.3V and A0 port to start configuration mode.
 * 
-* In all modes connected 5V to D2 incriments the inner counter, to holding D13 for 2 sec clears the counter.
+* In all modes connecting 5V to D2 incriments the inner counter, holding D13 for 2 sec clears the counter.
 * Inner counter value updating every 0.4 sec with a displaying function depending on mode.
 */
 
 #include <EEPROM.h>
 #include <LiquidCrystal.h>
+#include <TimerMs.h>
 
+TimerMs tmr(400,1,1);
 LiquidCrystal lcd(7, 8, 10, 9, 12, 11);
 bool isNormal = false;
 int length = 0;
 int shiftSize = 0;
 float counter = 0.0;
-float vector[30];
 
 void setup() {
 
@@ -65,40 +66,38 @@ void setup() {
     lcd.print("Hello!");
   }
    
-
-
-  FillVectorOnLength();  
-
   pinMode(2 , INPUT);
   pinMode(13 , INPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
   attachInterrupt(0, INT0_Encoder, RISING);
 
-}
-
-void loop() {
   if (isNormal == false)
   {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(195);
-
-    counter += vector[shiftSize];
-    shiftSize = 0;
-    Serial.print(counter);
-    Serial.println(' ');
+    Serial.println("Timer engaged.");
+    tmr.attach(TMR_Output);
   }
+}
+
+void loop() 
+{
+  if (tmr.tick()) TMR_Output();
 }
 
 void INT0_Encoder()
 {
-    shiftSize++;
+  counter += length;
+}
+
+void TMR_Output()
+{
+  Serial.println(printMarkedInt(counter));
+  tmr.start();
 }
 
 String printMarkedInt(int toPrint)
 {
+  //fix 0.001
   String builded = "";
 
   int metres = toPrint / 1000;
@@ -125,26 +124,6 @@ String printMarkedInt(int toPrint)
   }
   
   return(builded);
-}
-
-void FillVectorOnLength()
-{
-  vector[0] = 0;
-
-  for(int i=1; i<30 ; i++)
-  {
-    vector[i] = (vector[i-1]*1000 + length)/1000;
-  }
-
-  /* for testing
-
-  for(int i=0; i<30 ; i++)
-  {
-    Serial.print(i);  
-    Serial.print(":");  
-    Serial.println(vector[i],3);
-  }
-  */
 }
 
 void StandartOutput()
