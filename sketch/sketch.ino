@@ -1,8 +1,13 @@
 /*
-* Connect jumper to 3.3V and A0 port to start configuration mode.
-* 
-* In all modes connecting 5V to D2 incriments the inner counter, holding D13 for 2 sec clears the counter.
+* Notes:
+* Connect jumper to 3.3/5V and A0 port to start configuration mode.
+* Connect jumper to GND and A0 port to make sure board starts in normal mode.
+* In all modes connecting 5V to D2 and then to D3, incriments the inner counter.
+* Reverse connecting decrements the inner counter.
 * Inner counter value updating every 0.4 sec with a displaying function depending on mode.
+*
+* Made by:
+* fars40k@yandex.ru
 */
 
 #include <EEPROM.h>
@@ -10,11 +15,17 @@
 #include <TimerMs.h>
 
 TimerMs tmr(400,1,1);
-LiquidCrystal lcd(7, 8, 10, 9, 12, 11);
+LiquidCrystal lcd(8, 7, 9, 10, 11, 12);
+
 bool isNormal = false;
+bool isForward = false;
+bool isBackward = false;
+
 int length = 0;
 int shiftSize = 0;
-float counter = 0.0;
+long counter = 0;
+
+void (*Output_method) (void);
 
 void setup() {
 
@@ -23,12 +34,14 @@ void setup() {
   if(analogRead(0) > 64)
   {
     // Configuration mode
+
     isNormal = false;
 
     Serial.begin(9600);
-    Serial.print("Segment: ");
-    Serial.println(printMarkedInt(length));
-    Serial.println("Print new in mm or 'no' ?");
+    Serial.print("Stored segment: ");
+    Serial.println(PrintMeasurements(length));
+    Serial.println("Print new value(e.g. '1234' = 0.1234m or 123.4mm ) from 1 to 20000");
+    Serial.println("or print 'no':");
 
     while(true)
     {   
@@ -42,8 +55,9 @@ void setup() {
         break;
       }
 
-      if (newLength != 0)
+      if ((newLength != 0)&&(newLength > 0)&&(newLength <= 20000))
       {
+
         EEPROM.put(0, newLength);
         Serial.print(length);
         Serial.print(" -> "); 
@@ -51,9 +65,10 @@ void setup() {
         Serial.println(length);
 
         Serial.print("Segment: ");
-        Serial.println(printMarkedInt(length));
+        Serial.println(PrintMeasurements(length));
 
         break;
+
       }
     }
   } else
@@ -62,8 +77,11 @@ void setup() {
 
     isNormal = true;
 
-    lcd.begin(20, 4);
-    lcd.print("Hello!");
+    lcd.begin(16, 2);
+    lcd.print("S: ");
+    lcd.print(length);
+
+    delay(3000);    
   }
    
   pinMode(2 , INPUT);
@@ -71,62 +89,114 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   attachInterrupt(0, INT0_Encoder, RISING);
+  attachInterrupt(1, INT1_Encoder, RISING);  
 
   if (isNormal == false)
   {
+
     Serial.println("Timer engaged.");
-    tmr.attach(TMR_Output);
+    Output_method = TMR_Output_config_mode;
+
+  } else
+  {
+
+    Output_method = TMR_Output_normal_mode;
+
   }
+
 }
 
 void loop() 
 {
-  if (tmr.tick()) TMR_Output();
+  if (tmr.tick()) Output_method();
 }
 
 void INT0_Encoder()
 {
-  counter += length;
+  if (isBackward == true)
+  { 
+
+    counter -= length;
+    isBackward = false;
+
+  } else
+  {
+    isForward = true;
+  }  
 }
 
-void TMR_Output()
+void INT1_Encoder()
 {
-  Serial.println(printMarkedInt(counter));
+   if (isForward == true)
+  { 
+
+    counter += length;
+    isForward = false;
+
+  } else
+  {
+    isBackward = true;
+  }
+
+}
+
+void TMR_Output_config_mode()
+{
+  Serial.println(PrintMeasurements(counter));
   tmr.start();
 }
 
-String printMarkedInt(int toPrint)
+void TMR_Output_normal_mode()
 {
-  //fix 0.001
-  String builded = "";
+  lcd.clear();
+  lcd.print(PrintMeasurements(counter)); 
+  tmr.start(); 
+}
 
-  int metres = toPrint / 1000;
-  int millimetres = toPrint % 1000;
+String PrintMeasurements(long toPrint)
+{
+  String composite = "m: ";
+
+  int metres = toPrint / 10000;
+  int millimetres = toPrint % 10000;
+
+  if (toPrint < 0)
+  {
+
+     composite += "-";
+     metres *= -1;
+     millimetres *= -1;
+
+  }
 
   if (metres == 0)
   {
-     builded = "0.";
+
+     composite += "0.";
+
+  } else
+  {
+
+     composite += String(metres) + ".";
+
+  }
+
+  if (millimetres/1000 == 0)
+    {
+      composite += "0";
+    }
 
     if (millimetres/100 == 0)
     {
-      builded += "0";
+      composite += "0";
     }
 
     if (millimetres/10 == 0)
     {
-      builded += "0";
+      composite += "0";
     }
 
-     builded += String(millimetres) + " metres";
-  } else
-  {
-     builded = String(metres) + "." + String(millimetres) + " metres";
-  }
+  composite += String(millimetres);
   
-  return(builded);
-}
-
-void StandartOutput()
-{
-
+  return(composite);
 }
